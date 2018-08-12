@@ -1,10 +1,13 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import NoSuchElementException,StaleElementReferenceException
+from selenium.common.exceptions import NoSuchElementException,StaleElementReferenceException,ElementNotVisibleException,WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.action_chains import ActionChains
 from six.moves import html_parser
+
+import traceback
 import errno
 import time
 import webbrowser
@@ -15,10 +18,12 @@ import json
 import os
 import getpass
 import sys
+import csv
 #geckodriver.exe
 #chromedriver.exe
 
 #####  headless mode #####
+
 chrome_options = Options()  
 chrome_options.add_argument('--headless')
 chrome_options.add_argument('--hide-scrollbars')
@@ -34,9 +39,8 @@ driver = webdriver.Chrome(executable_path=driver_loc,chrome_options=chrome_optio
 #driver = webdriver.Firefox(executable_path=driver_loc)
 
 usr = input('username(email): ')
-
 pwd = getpass.getpass(prompt='password: ',stream=sys.stderr)
-
+post_dict = dict()
 def log_in(usr,pwd):
     sign_in_url="https://courses.edx.org/login?next=/dashboard"
     
@@ -54,7 +58,7 @@ def log_in(usr,pwd):
 
 
 def load_thread():
-    #WebDriverWait(driver, 2).until(EC.presence_of_element_located((By.CLASS_NAME, "forum-nav-load-more")))
+
     time.sleep(2)
 
     while(1):
@@ -69,6 +73,21 @@ def load_thread():
     return driver.find_elements_by_class_name("forum-nav-thread")
 
 
+def load_response():
+    
+    while(1):
+        try:
+            loadmore = driver.find_element_by_class_name("loading-animation") 
+        except NoSuchElementException:
+            break  
+
+def load_comment(cur_obj):
+    load_comment_btns = cur_obj.find_elements_by_xpath('//*[@class="btn-link action-show-comments"]')
+    for btn in load_comment_btns:
+        try:
+            btn.click()
+        except ElementNotVisibleException:
+            continue
         
 def list_dash_course():
     WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CLASS_NAME, "course-container")))
@@ -126,25 +145,25 @@ def find_response_user(response_obj):
         total_res.append((comment.text))
             
     return total_res
-            
 
 
-def crawl_discussion(cat_name,prev_idx):
-    WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CLASS_NAME, "forum-nav-thread-list-wrapper")))
+def crawl_discussion(cat_name,total_cat,cat_index,prev_idx):
     
     thread_list = load_thread()
-    tmp_post = []
-    post_obj = []
     tmp_post_dict = dict()
+    if not thread_list:
+        print('crawling at thread NO. {} of discussion category NO: {} / {} \r'.format(prev_idx,cat_index+1,total_cat),end='')
+
     for idx,thread in enumerate(thread_list):
-        thread.click()
-        while(1):
-            try:
-                loadmore = driver.find_element_by_class_name("loading-animation") 
-            except NoSuchElementException:
-                break                                            
+        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CLASS_NAME, "forum-nav-thread-list-wrapper")))    
+        #thread_no = thread.get_attribute('data-id')
+        #thread_located=WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '//*[@class="forum-nav-thread" and @data-id ="'+thread_no+'"]')))
+        handling_click_cat(thread)      
+        load_response()
+        
+                                                  
 
-
+        
         post_obj = driver.find_element_by_class_name("discussion-post")  
         try:
             post_user = driver.find_element_by_xpath('//*[@class="posted-details"]/a[@class="username"]').text
@@ -154,12 +173,13 @@ def crawl_discussion(cat_name,prev_idx):
         post_body = post_obj.find_element_by_class_name("post-body").text
 
 
-        res_obj_list = driver.find_elements_by_xpath('//*[@class="responses js-response-list"]/li')
+        res_obj_list = driver.find_elements_by_xpath('//*[@class="responses js-marked-answer-list" or @class="responses js-response-list"]/li')
         res_content = dict()
         res_user = dict()
         no_res = 0
         for r_idx, res_obj in enumerate(res_obj_list):
             tmp_res = []
+            load_comment(res_obj)
             tmp_text_obj = res_obj.find_elements_by_class_name("response-body")
             for tmp_text in tmp_text_obj:
                 tmp_res.append(tmp_text.text)
@@ -172,28 +192,40 @@ def crawl_discussion(cat_name,prev_idx):
         thread_index = prev_idx+idx+1
         post_content = {'post_category':cat_name,'title':post_title,'post_content':post_body,'post_user':post_user,'response':res_content,'response_user':res_user,'No_response':no_res} 
         tmp_post_dict.update({str(thread_index).zfill(4):post_content})
-        print('crawled thread NO. ',thread_index,'\r',end='')
+        print('crawling at thread NO. {} of discussion category NO: {} / {} \r'.format(thread_index,cat_index+1,total_cat),end='')
 
         
     return tmp_post_dict
+
+def handling_click_cat(webdriver_obj):
+    while(1):
+        try:
+            webdriver_obj.click()
+            break
+        except WebDriverException:
+            time.sleep(2)
+        except Exception as e:
+            print(e)
+
 
 def access_discussion(course): 
     driver.get(course['url'])
     WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CLASS_NAME, "navbar-nav")))
     driver.find_element_by_xpath('//*[@class="nav-item " or @class="nav-item active"]//*[contains(text(), "Discussion")]').click()
     discuss_cat_list,cat_name_list = fileter_duolicate_category()
-    print('begin crawling course: ',course['name'])
+    print('begin crawling course: {}'.format(course['name']))
     prev_idx = 0
-    post_dict = dict()
-    for cat,cat_name in zip(discuss_cat_list,cat_name_list):
+    total_cat = len(cat_name_list)
+    for cat_index,(cat,cat_name) in enumerate(zip(discuss_cat_list,cat_name_list)):
 
-        cat.click()
-        tmp_post_dict= crawl_discussion(cat_name,prev_idx)
+        handling_click_cat(cat)
+        tmp_post_dict= crawl_discussion(cat_name,total_cat,cat_index,prev_idx)
         post_dict.update(tmp_post_dict)
         prev_idx = len(post_dict)
         #print('crawling progress',str(idx+1),'/',len(thread_list),end='\r')
 
         driver.find_element_by_xpath('//*[@class="btn-link all-topics"]').click()
+        WebDriverWait(driver, 20).until(EC.visibility_of_element_located((By.XPATH, '//*[@class="forum-nav-browse-menu-item"]//*[@class="forum-nav-browse-title"]')))
 
 
     print('finished crawling')
@@ -271,10 +303,39 @@ def course_selection(course_list):
             print ('wrong course id. Try again!!!!!!!!')
     return chosen_course
     
+def discussion_process(selected_course):
+    filename = time.strftime("%Y%m%d-%H%M%S")+ "_logfile_discussion.csv"
+    write_log(filename,["Course title","URL","status"])
+    
+    for c in selected_course:
+        try:
+            access_discussion(c)
+            write_log(filename,[ c['name'], c['url'], 'success' ])
+        except Exception as e:
 
+            write_log(filename,[ c['name'], c['url'], 'error '+ traceback.format_exc()])
+            print(traceback.format_exc())
+
+def write_log(filename,data):
+    with open(filename,"a+",newline='') as f:
+        write_obj = csv.writer(f)
+        write_obj.writerow(data)
+
+def selected_course_2_csv(selected_course):
+    filename = time.strftime("%Y%m%d-%H%M%S")+ "_selected_file.csv"
+    write_log(filename,["Course title","URL"])
+    for c in selected_course:
+        write_log(filename,[ c['name'], c['url'] ])
+
+
+    
 if __name__== "__main__":
     log_in(usr,pwd)
     course_list = list_dash_course()
     chosen_course = course_selection(course_list)
-    for c in chosen_course:
-        access_discussion(c)
+    selected_course_2_csv(chosen_course)
+    discussion_process(chosen_course)
+    
+
+
+
