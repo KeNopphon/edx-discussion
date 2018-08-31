@@ -21,7 +21,7 @@ import sys
 import csv
 #geckodriver.exe
 #chromedriver.exe
-
+'''
 #####  headless mode #####
 
 chrome_options = Options()  
@@ -30,12 +30,13 @@ chrome_options.add_argument('--hide-scrollbars')
 chrome_options.add_argument('--disable-gpu')
 chrome_options.add_argument("--log-level=3")  # fatal 
 
-chrome_options.binary_location = 'C:/Users/lord_/AppData/Local/Google/Chrome SxS/Application/chrome.exe'  
+chrome_options.binary_location = 'C:/Users/lord_/AppData/Local/Google/Chrome SxS/Application/chrome.exe'
+#driver = webdriver.Chrome(executable_path=driver_loc,chrome_options=chrome_options)
 #############################
-
+'''
 driver_loc = './chromedriver.exe'
-#driver = webdriver.Chrome(executable_path=driver_loc)
-driver = webdriver.Chrome(executable_path=driver_loc,chrome_options=chrome_options)
+driver = webdriver.Chrome(executable_path=driver_loc)
+
 #driver = webdriver.Firefox(executable_path=driver_loc)
 
 usr = input('username(email): ')
