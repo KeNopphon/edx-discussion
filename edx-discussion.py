@@ -41,7 +41,7 @@ driver = webdriver.Chrome(executable_path=driver_loc)
 
 usr = input('username(email): ')
 pwd = getpass.getpass(prompt='password: ',stream=sys.stderr)
-post_dict = dict()
+
 def log_in(usr,pwd):
     sign_in_url="https://courses.edx.org/login?next=/dashboard"
     
@@ -210,6 +210,7 @@ def handling_click_cat(webdriver_obj):
 
 
 def access_discussion(course): 
+    post_dict = dict()
     driver.get(course['url'])
     WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CLASS_NAME, "navbar-nav")))
     driver.find_element_by_xpath('//*[@class="nav-item " or @class="nav-item active"]//*[contains(text(), "Discussion")]').click()
