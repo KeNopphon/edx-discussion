@@ -25,5 +25,6 @@ The output is a JSON file ('all_dis.json'), which is stored by default in "HTMLs
 
 ## Extra files and folders
 [DATETIME]_selected_file.csv contain the list of selected courses for crawling 
+
 [DATETIME]_logfile_discussion.csv is the log file
 
