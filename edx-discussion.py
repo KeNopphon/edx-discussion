@@ -7,6 +7,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.action_chains import ActionChains
 from six.moves import html_parser
 
+import pandas as pd
 import traceback
 import errno
 import time
@@ -19,24 +20,24 @@ import os
 import getpass
 import sys
 import csv
+
 #geckodriver.exe
 #chromedriver.exe
-'''
-#####  headless mode #####
+
 
 chrome_options = Options()  
+chrome_options.add_argument("--log-level=3")  # fatal 
+chrome_options.add_argument('--disable-gpu')
+#####  headless mode #####
+'''
 chrome_options.add_argument('--headless')
 chrome_options.add_argument('--hide-scrollbars')
-chrome_options.add_argument('--disable-gpu')
-chrome_options.add_argument("--log-level=3")  # fatal 
-
-chrome_options.binary_location = 'C:/Users/lord_/AppData/Local/Google/Chrome SxS/Application/chrome.exe'
-#driver = webdriver.Chrome(executable_path=driver_loc,chrome_options=chrome_options)
+chrome_options.binary_location = 'C:/Users/lord_/AppData/Local/Google/Chrome SxS/Application/chrome.exe'  
 #############################
 '''
 driver_loc = './chromedriver.exe'
-driver = webdriver.Chrome(executable_path=driver_loc)
-
+#driver = webdriver.Chrome(executable_path=driver_loc)
+driver = webdriver.Chrome(executable_path=driver_loc,chrome_options=chrome_options)
 #driver = webdriver.Firefox(executable_path=driver_loc)
 
 usr = input('username(email): ')
@@ -63,11 +64,12 @@ def load_thread():
     time.sleep(2)
 
     while(1):
+        time.sleep(2)
         try:
             loadmore = driver.find_element_by_class_name('forum-nav-load-more').click()
         except StaleElementReferenceException:
             continue
-        except NoSuchElementException:
+        except (NoSuchElementException):
             #w_flag-=1
             #if w_flag <0:
             break
@@ -141,12 +143,44 @@ def find_response_user(response_obj):
     #comment_list= response_obj.find_elements_by_xpath('//*[@class="comments"]//*[@class="posted-details"]')
     #comment_list= response_obj.find_elements_by_xpath('//*[@class="comments"]//*[@class="posted-details"]//*[@class="username"]')
     total_res = []
-    comment_list = response_obj.find_elements_by_class_name("username")
-    for comment in comment_list:
-        total_res.append((comment.text))
+    user_list = response_obj.find_elements_by_class_name("username")
+    for user in user_list:
+        total_res.append(user.text)
+            
+    return (total_res)
+
+def find_response_timestamp(response_obj):
+    total_res = []
+
+    timestamp_list = response_obj.find_elements_by_class_name('timeago')
+    for timestamp in timestamp_list:
+        total_res.append(timestamp.get_attribute('title'))
             
     return total_res
 
+
+
+def find_response_user_role(response_obj):
+    
+    total_res_role = []
+    res_nameroletypedate = response_obj.find_element_by_class_name("response-header-content").text
+    cmt_nameroletypedate = response_obj.find_elements_by_class_name("posted-details")
+    response_role = find_role(res_nameroletypedate)
+    total_res_role.append(response_role)
+    if len(cmt_nameroletypedate) > 1:
+        comments_obj = response_obj.find_elements_by_class_name("posted-details")[1:]
+        for comment_nameroletypedate in comments_obj:
+            comment_role = find_role(comment_nameroletypedate.text)
+            total_res_role.append(comment_role)
+            
+    return (total_res_role)    
+
+def find_role(string):
+    set_role = ['Community TA','Staff']
+    for role in set_role:
+        if re.search(role,string):
+            return(role)
+    return('n/a')
 
 def crawl_discussion(cat_name,total_cat,cat_index,prev_idx):
     
@@ -161,22 +195,30 @@ def crawl_discussion(cat_name,total_cat,cat_index,prev_idx):
         #thread_located=WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '//*[@class="forum-nav-thread" and @data-id ="'+thread_no+'"]')))
         handling_click_cat(thread)      
         load_response()
-        
-                                                  
 
-        
         post_obj = driver.find_element_by_class_name("discussion-post")  
         try:
             post_user = driver.find_element_by_xpath('//*[@class="posted-details"]/a[@class="username"]').text
+            nameroletypedate = driver.find_element_by_xpath('//*[@class="posted-details"]').text
+            post_user = driver.find_element_by_xpath('//*[@class="posted-details"]/a[@class="username"]').text
+            post_user_role = find_role(nameroletypedate)
         except:
             post_user = 'anonymous'
+            post_user_role = 'n/a'
+        
+
+        post_timestamp = driver.find_element_by_xpath('//*[@class="post-header-content"]/p[@class="posted-details"]/span[@class="timeago"]').get_attribute('title')
+        post_type = driver.find_element_by_xpath('//*[@class="posted-details"]').text.split(' ')[0]
         post_title = post_obj.find_element_by_class_name("post-title").text
         post_body = post_obj.find_element_by_class_name("post-body").text
 
 
         res_obj_list = driver.find_elements_by_xpath('//*[@class="responses js-marked-answer-list" or @class="responses js-response-list"]/li')
+        res_timestamp =  dict()
+        res_user_role = dict()
         res_content = dict()
         res_user = dict()
+
         no_res = 0
         for r_idx, res_obj in enumerate(res_obj_list):
             tmp_res = []
@@ -187,11 +229,15 @@ def crawl_discussion(cat_name,total_cat,cat_index,prev_idx):
                 no_res+=1
             
             tmp_res_user = find_response_user(res_obj)
-               
+            tmp_res_timestamp = find_response_timestamp(res_obj)   
+            tmp_res_user_role = find_response_user_role(res_obj)
+
             res_content.update({"responses_"+str(r_idx+1).zfill(2):tmp_res})
             res_user.update({"responses_"+str(r_idx+1).zfill(2):tmp_res_user})
+            res_user_role.update({"responses_"+str(r_idx+1).zfill(2):tmp_res_user_role})
+            res_timestamp.update({"responses_"+str(r_idx+1).zfill(2):tmp_res_timestamp})
         thread_index = prev_idx+idx+1
-        post_content = {'post_category':cat_name,'title':post_title,'post_content':post_body,'post_user':post_user,'response':res_content,'response_user':res_user,'No_response':no_res} 
+        post_content = {'post_category':cat_name,'post_timestamp':post_timestamp,'type':post_type,'title':post_title,'post_content':post_body,'post_user':post_user,'post_user_role':post_user_role,'response':res_content,'response_user':res_user,'response_user_role':res_user_role,'response_timestamp':res_timestamp,'No_response':no_res} 
         tmp_post_dict.update({str(thread_index).zfill(4):post_content})
         print('crawling at thread NO. {} of discussion category NO: {} / {} \r'.format(thread_index,cat_index+1,total_cat),end='')
 
@@ -209,13 +255,13 @@ def handling_click_cat(webdriver_obj):
             print(e)
 
 
-def access_discussion(course): 
+def access_discussion(course_name,course_url): 
     post_dict = dict()
-    driver.get(course['url'])
+    driver.get(course_url)
     WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CLASS_NAME, "navbar-nav")))
     driver.find_element_by_xpath('//*[@class="nav-item " or @class="nav-item active"]//*[contains(text(), "Discussion")]').click()
     discuss_cat_list,cat_name_list = fileter_duolicate_category()
-    print('begin crawling course: {}'.format(course['name']))
+    print('begin crawling course: {}'.format(course_name))
     prev_idx = 0
     total_cat = len(cat_name_list)
     for cat_index,(cat,cat_name) in enumerate(zip(discuss_cat_list,cat_name_list)):
@@ -231,7 +277,7 @@ def access_discussion(course):
 
 
     print('finished crawling')
-    course_path = os.path.join('HTMLs',clean_filename(course['name']))
+    course_path = os.path.join('HTMLs',clean_filename(course_name))
     mkdir_p(course_path)
     dict2json = json.dumps(post_dict, sort_keys=True, indent=4, separators=(',', ': '))
 
@@ -281,15 +327,18 @@ def mkdir_p(path, mode=0o777):
 
 def course_selection(course_list):
     
-    chosen_course = []
-    chosen_no = int(input('enter number of courses (type 9999 for crawling every course)'))
     
+    chosen_no = int(input('enter number of courses (type 9999 for crawling every course)'))
+    chosen_idx =[]
     if chosen_no == 9999:
         return course_list
  
     print ('list of courses in dashboard')
-    for idx,course in enumerate(course_list):
-        print (str(idx) +' : ' + course['name'])
+    
+    df = pd.DataFrame(course_list).sort_values('name')
+
+    for course,idx in zip(df.name,df.index):
+        print (str(idx).ljust(5) +' : ' + course)
     array_c = [i for i in range(0,len(course_list)) ]
     
     while True:
@@ -298,36 +347,39 @@ def course_selection(course_list):
             
         chosen_course_id = int(input('enter course number '))
         if chosen_course_id in array_c:
-            chosen_course.append(course_list[chosen_course_id])
-            print (course_list[chosen_course_id]['name'] + '\n')
+            chosen_idx.append(chosen_course_id)
+            print (df.name[chosen_course_id] , ' : ', df.url[chosen_course_id])
             chosen_no-=1
         else:
             print ('wrong course id. Try again!!!!!!!!')
-    return chosen_course
+    return df.loc[chosen_idx]
     
 def discussion_process(selected_course):
     filename = time.strftime("%Y%m%d-%H%M%S")+ "_logfile_discussion.csv"
     write_log(filename,["Course title","URL","status"])
     
-    for c in selected_course:
+    for tmp_name,tmp_url in zip(selected_course.name,selected_course.url):
         try:
-            access_discussion(c)
-            write_log(filename,[ c['name'], c['url'], 'success' ])
+            access_discussion(tmp_name,tmp_url)
+            write_log(filename,[tmp_name,tmp_url, 'success' ])
         except Exception as e:
 
-            write_log(filename,[ c['name'], c['url'], 'error '+ traceback.format_exc()])
+            write_log(filename,[ tmp_name,tmp_url, 'error '+ traceback.format_exc()])
             print(traceback.format_exc())
 
+    driver.quit()
+
+    
 def write_log(filename,data):
-    with open(filename,"a+",newline='') as f:
+    with open(filename,"a+",newline='',encoding='utf-8') as f:
         write_obj = csv.writer(f)
         write_obj.writerow(data)
 
 def selected_course_2_csv(selected_course):
     filename = time.strftime("%Y%m%d-%H%M%S")+ "_selected_file.csv"
     write_log(filename,["Course title","URL"])
-    for c in selected_course:
-        write_log(filename,[ c['name'], c['url'] ])
+    for tmp_name,tmp_url in zip(selected_course.name,selected_course.url):
+        write_log(filename,[ tmp_name, tmp_url ])
 
 
     
