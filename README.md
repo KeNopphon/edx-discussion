@@ -28,3 +28,5 @@ The output is a JSON file ('all_dis.json'), which is stored by default in "HTMLs
 
 [DATETIME]_logfile_discussion.csv is the log file
 
+## Test environment
+Python 3.5, Windows 10
